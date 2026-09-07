@@ -7,6 +7,7 @@ import sheets
 
 app = Flask(__name__)
 app.secret_key = "dashboard-magang-secret"
+app.config['APPLICATION_ROOT'] = '/magang'  # mounted via Nginx/WSGI subpath
 
 
 @app.route("/", methods=["GET", "POST"])
