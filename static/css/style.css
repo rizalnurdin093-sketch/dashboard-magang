@@ -322,6 +322,32 @@ table.dt tr:last-child td { border-bottom: none; }
 /* Upload btn */
 .upload-btn { display: inline-block; }
 
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .9rem 1.25rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.pg-info { font-size: .78rem; color: var(--ink-muted); margin-right: .25rem; }
+.pg-btn {
+  min-width: 34px;
+  padding: .35rem .6rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-size: .8rem;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all .15s;
+}
+.pg-btn:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+.pg-btn.active { background: var(--blue); color: white; border-color: var(--blue); font-weight: 600; }
+.pg-btn:disabled { opacity: .4; cursor: not-allowed; }
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
   .stat-grid { grid-template-columns: repeat(3, 1fr); }

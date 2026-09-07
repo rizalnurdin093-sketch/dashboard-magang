@@ -92,6 +92,10 @@
       <div class="panel-title"><span class="icon">🏢</span> Peserta per Divisi</div>
       <div class="chart-wrap"><canvas id="chartDivisi"></canvas></div>
     </div>
+    <div class="panel">
+      <div class="panel-title"><span class="icon">🎓</span> Peserta per Universitas</div>
+      <div class="chart-wrap"><canvas id="chartUniv"></canvas></div>
+    </div>
   </div>
 
   <!-- TABLE -->
@@ -135,6 +139,7 @@
         </tbody>
       </table>
     </div>
+    <div class="pagination" id="pagination"></div>
   </div>
 
 </div>
@@ -229,7 +234,7 @@ function updateStats(data) {
 }
 
 // ===== CHARTS =====
-let chartTrend = null, chartDivisi = null;
+let chartTrend = null, chartDivisi = null, chartUniv = null;
 
 function updateCharts(data) {
   // --- Trend per bulan ---
@@ -270,35 +275,69 @@ function updateCharts(data) {
     }
   });
 
-  // --- Peserta per divisi ---
+  // --- Peserta per divisi (PIE + persentase) ---
   const divMap = {};
   data.forEach(r => {
     const d = (r.penempatan || 'Tidak Ditentukan').trim();
     divMap[d] = (divMap[d] || 0) + 1;
   });
+  const divTotal = data.length || 1;
   const divLabels = Object.keys(divMap).sort((a,b) => divMap[b] - divMap[a]);
-  const divColors = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0d9488','#e11d48','#0ea5e9'];
+  const divColors = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0d9488','#e11d48','#0ea5e9','#f59e0b','#14b8a6'];
 
   if (chartDivisi) chartDivisi.destroy();
   chartDivisi = new Chart(document.getElementById('chartDivisi'), {
-    type: 'doughnut',
+    type: 'pie',
     data: {
-      labels: divLabels,
-      datasets: [{ data: divLabels.map(l => divMap[l]), backgroundColor: divColors.slice(0, divLabels.length), borderWidth: 0, hoverOffset: 8 }]
+      labels: divLabels.map(l => `${l} (${Math.round(divMap[l]/divTotal*100)}%)`),
+      datasets: [{ data: divLabels.map(l => divMap[l]), backgroundColor: divColors.slice(0, divLabels.length), borderWidth: 1, borderColor: '#fff' }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      cutout: '62%',
-      plugins: { legend: { position: 'right', labels: { font: { family: 'Inter', size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'circle' } } }
+      plugins: {
+        legend: { position: 'right', labels: { font: { family: 'Inter', size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'circle' } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label} — ${ctx.raw} (${Math.round(ctx.raw/divTotal*100)}%)` } }
+      }
+    }
+  });
+
+  // --- Peserta per universitas (PIE + persentase) ---
+  const univMap = {};
+  data.forEach(r => {
+    const u = (r.universitas || 'Tidak Diketahui').trim();
+    univMap[u] = (univMap[u] || 0) + 1;
+  });
+  const univTotal = data.length || 1;
+  const univLabels = Object.keys(univMap).sort((a,b) => univMap[b] - univMap[a]);
+  const univColors = ['#0ea5e9','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#d946ef','#84cc16','#f97316','#3b82f6','#a3e635','#22d3ee','#fb7185'];
+
+  if (chartUniv) chartUniv.destroy();
+  chartUniv = new Chart(document.getElementById('chartUniv'), {
+    type: 'pie',
+    data: {
+      labels: univLabels.map(l => `${l} (${Math.round(univMap[l]/univTotal*100)}%)`),
+      datasets: [{ data: univLabels.map(l => univMap[l]), backgroundColor: univColors.slice(0, univLabels.length), borderWidth: 1, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { family: 'Inter', size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'circle' } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label} — ${ctx.raw} (${Math.round(ctx.raw/univTotal*100)}%)` } }
+      }
     }
   });
 }
 
-// ===== TABLE =====
-function updateTable(data) {
+// ===== TABLE (pagination 50/halaman) =====
+const PAGE_SIZE = 50;
+let page = 1;
+let allFiltered = [];
+
+function renderTableRows(data) {
   const tbody = document.getElementById('tableBody');
   if (!data.length) {
     tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><div class="icon">📋</div><p>Tidak ada data ditemukan.</p></td></tr>';
+    document.getElementById('pagination').innerHTML = '';
     return;
   }
   tbody.innerHTML = data.map(r => `
@@ -314,6 +353,39 @@ function updateTable(data) {
       <td>${r.waktu_magang || ''}</td>
       <td>${r.mentor || ''}</td>
     </tr>`).join('');
+}
+
+function renderPagination(total) {
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (page > totalPages) page = totalPages;
+  const nav = document.getElementById('pagination');
+  if (totalPages <= 1) { nav.innerHTML = ''; return; }
+
+  let html = `<span class="pg-info">Halaman ${page} dari ${totalPages} (${total} peserta)</span>`;
+  html += `<button class="pg-btn" ${page===1?'disabled':''} onclick="goPage(${page-1})">&lt; Prev</button>`;
+
+  const startPg = Math.max(1, page - 2), endPg = Math.min(totalPages, page + 2);
+  for (let p = startPg; p <= endPg; p++) {
+    html += `<button class="pg-btn ${p===page?'active':''}" onclick="goPage(${p})">${p}</button>`;
+  }
+  html += `<button class="pg-btn" ${page===totalPages?'disabled':''} onclick="goPage(${page+1})">Next &gt;</button>`;
+  nav.innerHTML = html;
+}
+
+function goPage(p) {
+  const totalPages = Math.max(1, Math.ceil(allFiltered.length / PAGE_SIZE));
+  if (p < 1) p = 1;
+  if (p > totalPages) p = totalPages;
+  page = p;
+  const slice = allFiltered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  renderTableRows(slice);
+  renderPagination(allFiltered.length);
+}
+
+function updateTable(data) {
+  allFiltered = data;
+  page = 1;
+  goPage(1);
 }
 
 // ===== POPULATE FILTERS =====
