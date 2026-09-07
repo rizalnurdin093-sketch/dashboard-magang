@@ -1,44 +1,18 @@
 """
-Koneksi ke Google Sheets via gspread + service account.
-Baca data spreadsheet → list of dict.
+Baca data dari file Excel yang diupload.
+Kolom yang diharapkan:
+  No, Nama, NIM, Jenis Kelamin, Jenis Magang,
+  Nama Sekolah / Universitas, Jurusan, Program Intership,
+  Penempatan, No Hp, Tanggal Masuk, Tanggal Keluar,
+  Waktu Magang, Mentor, Status
 """
-import gspread
-from google.oauth2.service_account import Credentials
-import config
+import os
+import openpyxl
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-
-def get_client():
-    """Buat gspread client dari service account credentials."""
-    creds = Credentials.from_service_account_file(config.CREDS_FILE, scopes=SCOPES)
-    return gspread.authorize(creds)
-
-
-def get_data():
-    """
-    Baca seluruh data dari spreadsheet.
-    Return: list of dict, satu dict per baris (header row = keys).
-    Kolom yang diharapkan:
-        No, Nama, NIM, Jenis Kelamin, Jenis Magang, Nama Sekolah / Universitas,
-        Jurusan, Program Intership, Penempatan, No Hp,
-        Tanggal Masuk, Tanggal Keluar, Waktu Magang, Mentor, Status
-    """
-    try:
-        client = get_client()
-        spreadsheet = client.open_by_key(config.SPREADSHEET_ID)
-        worksheet = spreadsheet.worksheet(config.WORKSHEET_NAME)
-        rows = worksheet.get_all_records()  # list of dict
-        return rows
-    except Exception as e:
-        print(f"[Google Sheets Error] {e}")
-        return []
-
-
-# Kolom baku yang dipetakan dari spreadsheet
+# Kolom baku → snake_case
 KOLOM_MAP = {
     "No": "no",
     "Nama": "nama",
@@ -46,6 +20,7 @@ KOLOM_MAP = {
     "Jenis Kelamin": "jenis_kelamin",
     "Jenis Magang": "jenis_magang",
     "Nama Sekolah / Universitas": "universitas",
+    "Nama Sekolah/Universitas": "universitas",
     "Jurusan": "jurusan",
     "Program Intership": "program",
     "Penempatan": "penempatan",
@@ -58,13 +33,57 @@ KOLOM_MAP = {
 }
 
 
-def get_normalized_data():
-    """Baca data & normalisasi key ke snake_case."""
-    raw = get_data()
-    normalized = []
-    for row in raw:
+def read_excel(filepath):
+    """Baca .xlsx → list of dict (satu per baris)."""
+    wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        return []
+    # Header = baris pertama
+    headers = [str(h).strip() if h else "" for h in rows[0]]
+    data = []
+    for row in rows[1:]:
+        # Skip baris kosong
+        if not any(cell for cell in row):
+            continue
         item = {}
-        for src_key, dst_key in KOLOM_MAP.items():
-            item[dst_key] = str(row.get(src_key, "")).strip()
-        normalized.append(item)
-    return normalized
+        for col_idx, header in enumerate(headers):
+            # Map header ke snake_case
+            mapped = KOLOM_MAP.get(header, header.lower().replace(" ", "_").replace("/", "_").replace("-", "_"))
+            val = row[col_idx] if col_idx < len(row) else ""
+            # Format tanggal dari datetime object
+            if hasattr(val, "strftime"):
+                val = val.strftime("%d %B %Y")
+            item[mapped] = str(val).strip() if val is not None else ""
+        data.append(item)
+    return data
+
+
+def save_upload(file_storage):
+    """Simpan file upload ke uploads/, return path."""
+    filename = file_storage.filename
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    file_storage.save(filepath)
+    return filepath
+
+
+# State sederhana: path file terakhir yang diupload
+_current_file = None
+
+
+def set_current_file(path):
+    global _current_file
+    _current_file = path
+
+
+def get_current_file():
+    return _current_file
+
+
+def get_data():
+    """Baca data dari file yang aktif. Return list of dict."""
+    if _current_file and os.path.exists(_current_file):
+        return read_excel(_current_file)
+    return []

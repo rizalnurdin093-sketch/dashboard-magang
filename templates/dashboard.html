@@ -9,6 +9,13 @@
     <p>PT Timah (Persero) Tbk — Kelola Peserta Magang</p>
   </div>
   <div class="header-right">
+    {% if filename %}
+    <span style="font-size:.78rem;color:#94a3b8;background:rgba(255,255,255,.08);padding:.35rem .7rem;border-radius:8px;">📄 {{ filename }}</span>
+    {% endif %}
+    <form method="POST" enctype="multipart/form-data" id="uploadForm" style="display:inline;">
+      <label class="filter-btn upload-btn" for="fileInput" style="cursor:pointer;">⬆ Upload Excel</label>
+      <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" style="display:none;" onchange="document.getElementById('uploadForm').submit();">
+    </form>
     <select class="filter-select" id="filterTahun">
       <option value="">Semua Tahun</option>
     </select>
@@ -29,6 +36,17 @@
     </select>
   </div>
 </header>
+
+<!-- FLASH MESSAGES -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="container" style="padding-bottom:0;">
+  {% for cat, msg in messages %}
+  <div class="flash-msg flash-{{ cat }}">{{ msg }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
 
 <div class="container">
 
