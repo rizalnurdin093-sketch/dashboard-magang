@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard Magang — PT Timah{% endblock %}
+{% block body %}
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <h1>📋 Dashboard Magang</h1>
+    <p>PT Timah (Persero) Tbk — Kelola Peserta Magang</p>
+  </div>
+  <div class="header-right">
+    <select class="filter-select" id="filterTahun">
+      <option value="">Semua Tahun</option>
+    </select>
+    <select class="filter-select" id="filterBulan">
+      <option value="">Semua Bulan</option>
+      <option value="1">Januari</option>
+      <option value="2">Februari</option>
+      <option value="3">Maret</option>
+      <option value="4">April</option>
+      <option value="5">Mei</option>
+      <option value="6">Juni</option>
+      <option value="7">Juli</option>
+      <option value="8">Agustus</option>
+      <option value="9">September</option>
+      <option value="10">Oktober</option>
+      <option value="11">November</option>
+      <option value="12">Desember</option>
+    </select>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- STAT CARDS -->
+  <div class="stat-grid" id="statCards">
+    <div class="stat-card blue">
+      <div class="stat-icon blue">📝</div>
+      <div class="stat-value" id="statTotal">-</div>
+      <div class="stat-label">Total Pengajuan</div>
+      <div class="stat-sub" id="statTotalSub"></div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon green">✅</div>
+      <div class="stat-value" id="statDisetujui">-</div>
+      <div class="stat-label">Disetujui</div>
+      <div class="stat-sub" id="statDisetujuiSub"></div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-icon purple">🔄</div>
+      <div class="stat-value" id="statAktif">-</div>
+      <div class="stat-label">Sedang Magang</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-icon red">❌</div>
+      <div class="stat-value" id="statDitolak">-</div>
+      <div class="stat-label">Ditolak</div>
+      <div class="stat-sub" id="statDitolakSub"></div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-icon amber">🎓</div>
+      <div class="stat-value" id="statSelesai">-</div>
+      <div class="stat-label">Selesai</div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="chart-grid">
+    <div class="panel">
+      <div class="panel-title"><span class="icon">📊</span> Trend Pengajuan per Bulan</div>
+      <div class="chart-wrap"><canvas id="chartTrend"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><span class="icon">🏢</span> Peserta per Divisi</div>
+      <div class="chart-wrap"><canvas id="chartDivisi"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-panel">
+    <div class="table-head">
+      <h2>Daftar Peserta Magang</h2>
+      <div class="search-box">
+        <input type="text" class="search-input" id="searchBox" placeholder="Cari nama / universitas...">
+        <select class="status-filter" id="filterStatus">
+          <option value="">Semua Status</option>
+          <option value="Disetujui">Disetujui</option>
+          <option value="Sedang dalam">Sedang Magang</option>
+          <option value="Selesai">Selesai</option>
+          <option value="Ditolak">Ditolak</option>
+          <option value="Mengundurkan diri">Mengundurkan Diri</option>
+          <option value="Dalam Proses Persetujuan">Dalam Proses Persetujuan</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="dt">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama</th>
+            <th>Universitas</th>
+            <th>Program</th>
+            <th>Penempatan</th>
+            <th>Status</th>
+            <th>Masuk</th>
+            <th>Keluar</th>
+            <th>Durasi</th>
+            <th>Mentor</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="10" class="empty-state">
+            <div class="icon">📋</div>
+            <p>Memuat data...</p>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ===== DATA dari server (template injection) =====
+const RAW_DATA = {{ data|tojson }};
+
+// ===== STATUS NORMALIZATION =====
+function normStatus(s) {
+  s = (s || '').trim().toLowerCase();
+  if (s.includes('disetujui')) return 'disetujui';
+  if (s.includes('sedang') || s.includes('aktif') || s.includes('berjalan')) return 'sedang-magang';
+  if (s.includes('selesai') || s.includes('done') || s.includes('completed')) return 'selesai';
+  if (s.includes('tolak') || s.includes('ditolak')) return 'ditolak';
+  if (s.includes('undur') || s.includes('mengundurkan')) return 'mengundurkan';
+  if (s.includes('proses') || s.includes('dalam')) return 'dalam-proses';
+  return s || 'dalam-proses';
+}
+function statusLabel(s) {
+  const n = normStatus(s);
+  const labels = {
+    'disetujui': 'Disetujui', 'sedang-magang': 'Sedang Magang',
+    'selesai': 'Selesai', 'ditolak': 'Ditolak',
+    'mengundurkan': 'Mengundurkan Diri', 'dalam-proses': 'Dalam Proses'
+  };
+  return labels[n] || s;
+}
+
+// ===== FILTERING =====
+function parseDate(s) {
+  if (!s) return null;
+  // Support: "1 Januari 2026", "01/01/2026", "2026-01-01"
+  const months = {januari:0,februari:1,maret:2,april:3,mei:4,juni:5,juli:6,agustus:7,september:8,oktober:9,november:10,desember:11};
+  s = s.trim();
+  // "1 Januari 2026"
+  let m = s.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/i);
+  if (m && months[m[2].toLowerCase()] !== undefined) {
+    return new Date(parseInt(m[3]), months[m[2].toLowerCase()], parseInt(m[1]));
+  }
+  // DD/MM/YYYY
+  m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]));
+  // YYYY-MM-DD
+  m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
+  return null;
+}
+
+function getFiltered() {
+  const tahun = document.getElementById('filterTahun').value;
+  const bulan = document.getElementById('filterBulan').value;
+  const status = document.getElementById('filterStatus').value;
+  const q = document.getElementById('searchBox').value.toLowerCase();
+
+  return RAW_DATA.filter(r => {
+    const d = parseDate(r.tanggal_masuk);
+    if (tahun && (!d || d.getFullYear() !== parseInt(tahun))) return false;
+    if (bulan && (!d || (d.getMonth()+1) !== parseInt(bulan))) return false;
+    if (status && normStatus(r.status) !== normStatus(status)) return false;
+    if (q) {
+      const haystack = [r.nama, r.universitas, r.penempatan, r.mentor].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ===== UPDATE STATS =====
+function updateStats(data) {
+  const total = data.length;
+  const disetujui = data.filter(r => normStatus(r.status) === 'disetujui').length;
+  const aktif = data.filter(r => normStatus(r.status) === 'sedang-magang').length;
+  const ditolak = data.filter(r => normStatus(r.status) === 'ditolak').length;
+  const selesai = data.filter(r => normStatus(r.status) === 'selesai').length;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statDisetujui').textContent = disetujui;
+  document.getElementById('statAktif').textContent = aktif;
+  document.getElementById('statDitolak').textContent = ditolak;
+  document.getElementById('statSelesai').textContent = selesai;
+
+  document.getElementById('statTotalSub').innerHTML = total > 0
+    ? `<strong>${Math.round(disetujui/total*100)}%</strong> disetujui dari ${total}`
+    : '';
+  document.getElementById('statDitolakSub').innerHTML = total > 0
+    ? `<strong>${Math.round(ditolak/total*100)}%</strong> dari total pengajuan`
+    : '';
+}
+
+// ===== CHARTS =====
+let chartTrend = null, chartDivisi = null;
+
+function updateCharts(data) {
+  // --- Trend per bulan ---
+  const monthNames = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const trendMap = {};
+  data.forEach(r => {
+    const d = parseDate(r.tanggal_masuk);
+    if (!d) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!trendMap[key]) trendMap[key] = {total:0, disetujui:0};
+    trendMap[key].total++;
+    if (normStatus(r.status) === 'disetujui' || normStatus(r.status) === 'sedang-magang' || normStatus(r.status) === 'selesai')
+      trendMap[key].disetujui++;
+  });
+  const keys = Object.keys(trendMap).sort();
+  const trendLabels = keys.map(k => {
+    const [y, m] = k.split('-');
+    return `${monthNames[parseInt(m)-1]} ${y}`;
+  });
+
+  if (chartTrend) chartTrend.destroy();
+  chartTrend = new Chart(document.getElementById('chartTrend'), {
+    type: 'bar',
+    data: {
+      labels: trendLabels,
+      datasets: [
+        { label: 'Total Pengajuan', data: keys.map(k => trendMap[k].total), backgroundColor: '#93c5fd', borderRadius: 6 },
+        { label: 'Disetujui', data: keys.map(k => trendMap[k].disetujui), backgroundColor: '#2563eb', borderRadius: 6 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { family: 'Inter', size: 11 }, usePointStyle: true, pointStyle: 'rectRounded' } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 } } },
+        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { family: 'Inter', size: 11 }, stepSize: 1 } }
+      }
+    }
+  });
+
+  // --- Peserta per divisi ---
+  const divMap = {};
+  data.forEach(r => {
+    const d = (r.penempatan || 'Tidak Ditentukan').trim();
+    divMap[d] = (divMap[d] || 0) + 1;
+  });
+  const divLabels = Object.keys(divMap).sort((a,b) => divMap[b] - divMap[a]);
+  const divColors = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0d9488','#e11d48','#0ea5e9'];
+
+  if (chartDivisi) chartDivisi.destroy();
+  chartDivisi = new Chart(document.getElementById('chartDivisi'), {
+    type: 'doughnut',
+    data: {
+      labels: divLabels,
+      datasets: [{ data: divLabels.map(l => divMap[l]), backgroundColor: divColors.slice(0, divLabels.length), borderWidth: 0, hoverOffset: 8 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: { legend: { position: 'right', labels: { font: { family: 'Inter', size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'circle' } } }
+    }
+  });
+}
+
+// ===== TABLE =====
+function updateTable(data) {
+  const tbody = document.getElementById('tableBody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><div class="icon">📋</div><p>Tidak ada data ditemukan.</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td class="num">${r.no || ''}</td>
+      <td><strong>${r.nama || ''}</strong></td>
+      <td>${r.universitas || ''}</td>
+      <td>${r.program || ''}</td>
+      <td>${r.penempatan || ''}</td>
+      <td><span class="badge ${normStatus(r.status)}">${statusLabel(r.status)}</span></td>
+      <td>${r.tanggal_masuk || ''}</td>
+      <td>${r.tanggal_keluar || ''}</td>
+      <td>${r.waktu_magang || ''}</td>
+      <td>${r.mentor || ''}</td>
+    </tr>`).join('');
+}
+
+// ===== POPULATE FILTERS =====
+function populateFilters() {
+  const years = new Set();
+  RAW_DATA.forEach(r => {
+    const d = parseDate(r.tanggal_masuk);
+    if (d) years.add(d.getFullYear());
+  });
+  const sel = document.getElementById('filterTahun');
+  [...years].sort().forEach(y => {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    sel.appendChild(opt);
+  });
+}
+
+// ===== REFRESH ALL =====
+function refresh() {
+  const data = getFiltered();
+  updateStats(data);
+  updateCharts(data);
+  updateTable(data);
+}
+
+// ===== EVENTS =====
+['filterTahun','filterBulan','filterStatus','searchBox'].forEach(id => {
+  document.getElementById(id).addEventListener(id === 'searchBox' ? 'input' : 'change', refresh);
+});
+
+// ===== INIT =====
+populateFilters();
+refresh();
+</script>
+{% endblock %}
